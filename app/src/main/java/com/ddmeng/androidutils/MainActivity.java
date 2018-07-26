@@ -11,7 +11,7 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        boolean deviceRooted = DeviceUtils.isDeviceRooted();
+        boolean deviceRooted = new RootUtils(this).isDeviceRooted();
         TextView statusText = (TextView) findViewById(R.id.text_rooted_status);
         statusText.setText(getString(R.string.device_rooted_status, String.valueOf(deviceRooted)));
     }
