@@ -27,4 +27,18 @@ public class Constants {
             "/data",
             "/dev"
     };
+
+
+    public static final String[] PATHS_THAT_SHOULD_NOT_BE_WRITABLE = {
+            "/system",
+            "/system/bin",
+            "/system/sbin",
+            "/system/xbin",
+            "/vendor/bin",
+            //"/sys",
+            "/sbin",
+            "/etc",
+            //"/proc",
+            //"/dev"
+    };
 }

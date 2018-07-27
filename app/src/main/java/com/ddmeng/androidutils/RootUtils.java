@@ -4,10 +4,18 @@ import android.content.Context;
 import android.content.pm.PackageManager;
 import android.util.Log;
 
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.NoSuchElementException;
+import java.util.Scanner;
 
 import static com.ddmeng.androidutils.Constants.KNOWN_ROOT_APPS_PACKAGES;
 
@@ -21,8 +29,9 @@ public class RootUtils {
     }
 
     public boolean isDeviceRooted() {
-        return checkForBinary("su") || detectRootManagementApps()
-                || detectTestKeys() || checkForBinary("magisk");
+        return checkForBinary("su") || detectRootManagementApps() ||
+                checkForDangerousProps() || checkForRWPaths() ||
+                detectTestKeys() || checkSuExists() || checkForBinary("magisk");
     }
 
     /**
@@ -101,5 +110,132 @@ public class RootUtils {
         }
         return testKeysDetected;
     }
+
+    /**
+     * Checks for several system properties for
+     *
+     * @return - true if dangerous props are found
+     */
+    public boolean checkForDangerousProps() {
+
+        final Map<String, String> dangerousProps = new HashMap<>();
+        dangerousProps.put("ro.debuggable", "1");
+        dangerousProps.put("ro.secure", "0");
+
+        boolean result = false;
+
+        String[] lines = propsReader();
+
+        if (lines == null) {
+            // Could not read, assume false;
+            return result;
+        }
+
+        for (String line : lines) {
+            for (String key : dangerousProps.keySet()) {
+                if (line.contains(key)) {
+                    String badValue = dangerousProps.get(key);
+                    badValue = "[" + badValue + "]";
+                    if (line.contains(badValue)) {
+                        Log.v("Root", key + " = " + badValue + " detected!");
+                        result = true;
+                    }
+                }
+            }
+        }
+        return result;
+    }
+
+    private String[] propsReader() {
+        try {
+            InputStream inputstream = Runtime.getRuntime().exec("getprop").getInputStream();
+            if (inputstream == null) return null;
+            String propVal = new Scanner(inputstream).useDelimiter("\\A").next();
+            return propVal.split("\n");
+        } catch (IOException | NoSuchElementException e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    /**
+     * When you're root you can change the permissions on common system directories, this method checks if any of these patha Const.pathsThatShouldNotBeWrtiable are writable.
+     *
+     * @return true if one of the dir is writable
+     */
+    public boolean checkForRWPaths() {
+
+        boolean result = false;
+
+        String[] lines = mountReader();
+
+        if (lines == null) {
+            // Could not read, assume false;
+            return result;
+        }
+
+        for (String line : lines) {
+
+            // Split lines into parts
+            String[] args = line.split(" ");
+
+            if (args.length < 4) {
+                // If we don't have enough options per line, skip this and log an error
+                Log.e("Root", "Error formatting mount line: " + line);
+                continue;
+            }
+
+            String mountPoint = args[1];
+            String mountOptions = args[3];
+
+            for (String pathToCheck : Constants.PATHS_THAT_SHOULD_NOT_BE_WRITABLE) {
+                if (mountPoint.equalsIgnoreCase(pathToCheck)) {
+
+                    // Split options out and compare against "rw" to avoid false positives
+                    for (String option : mountOptions.split(",")) {
+
+                        if (option.equalsIgnoreCase("rw")) {
+                            Log.v("Root", pathToCheck + " path is mounted with rw permissions! " + line);
+                            result = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        return result;
+    }
+
+    private String[] mountReader() {
+        try {
+            InputStream inputstream = Runtime.getRuntime().exec("mount").getInputStream();
+            if (inputstream == null) return null;
+            String propVal = new Scanner(inputstream).useDelimiter("\\A").next();
+            return propVal.split("\n");
+        } catch (IOException | NoSuchElementException e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    /**
+     * A variation on the checking for SU, this attempts a 'which su'
+     *
+     * @return true if su found
+     */
+    public boolean checkSuExists() {
+        Process process = null;
+        try {
+            process = Runtime.getRuntime().exec(new String[]{"which", "su"});
+            BufferedReader in = new BufferedReader(new InputStreamReader(process.getInputStream()));
+            return in.readLine() != null;
+        } catch (Throwable t) {
+            return false;
+        } finally {
+            if (process != null) process.destroy();
+        }
+    }
+
 
 }
